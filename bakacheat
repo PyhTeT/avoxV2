@@ -1,0 +1,1069 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local LP = LocalPlayer
+local Camera = Workspace.CurrentCamera
+local genv = getgenv()
+
+for _, p in ipairs({"RW", "UR"}) do
+    if genv[p .. "_GUI"] then pcall(genv[p .. "_GUI"].Destroy) end
+    if genv[p .. "_EX"] then pcall(genv[p .. "_EX"].Unload) end
+    if genv[p .. "_AIM"] then pcall(genv[p .. "_AIM"].Unload) end
+    if genv[p .. "_ESP"] then pcall(genv[p .. "_ESP"].Unload) end
+end
+
+local ESP, AIM, EX
+local unloadAll
+
+do
+    local Config = {
+        Enabled = false, TeamCheck = false, MaxDistance = 1500,
+        Box = false, BoxFill = false, Name = false, Health = false, Distance = false,
+        Tracer = false, TracerOrigin = "Bottom", HeadDot = false, Skeleton = false, Chams = false,
+        VisibleCheck = false,
+        BoxColor = Color3.fromRGB(255, 45, 45),
+        SkeletonColor = Color3.fromRGB(255, 255, 255),
+        TracerColor = Color3.fromRGB(255, 45, 45),
+        HeadDotColor = Color3.fromRGB(255, 255, 255),
+        NameColor = Color3.fromRGB(255, 255, 255),
+        HealthColor = Color3.fromRGB(60, 255, 90),
+        TeamColor = Color3.fromRGB(120, 120, 120),
+        HiddenColor = Color3.fromRGB(255, 40, 40),
+        Rainbow = false,
+    }
+
+    local R15 = {
+        {"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
+        {"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
+        {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
+        {"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
+        {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"},
+    }
+    local R6 = {
+        {"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},
+        {"Torso","Left Leg"},{"Torso","Right Leg"},
+    }
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "__rw_esp"
+    sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true
+    sg.DisplayOrder = 999
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(sg) end end)
+    sg.Parent = CoreGui
+
+    local pool = {}
+    local connections = {}
+
+    local function makeEntry(plr)
+        local e = {
+            Outline = Instance.new("Frame"),
+            Box = Instance.new("Frame"),
+            Fill = Instance.new("Frame"),
+            Name = Instance.new("TextLabel"),
+            Dist = Instance.new("TextLabel"),
+            HpBack = Instance.new("Frame"),
+            HpFill = Instance.new("Frame"),
+            Tracer = Instance.new("Frame"),
+            Head = Instance.new("Frame"),
+            Bones = {},
+            HL = nil,
+        }
+
+        e.Outline.Name = "Outline"
+        e.Outline.BackgroundTransparency = 1
+        e.Outline.BorderSizePixel = 0
+        e.Outline.Visible = false
+        local os = Instance.new("UIStroke")
+        os.Color = Color3.new(0, 0, 0)
+        os.Thickness = 3
+        os.Parent = e.Outline
+        e.Outline.Parent = sg
+
+        e.Box.Name = "Box"
+        e.Box.BackgroundTransparency = 1
+        e.Box.BorderSizePixel = 0
+        e.Box.Visible = false
+        local bs = Instance.new("UIStroke")
+        bs.Color = Config.BoxColor
+        bs.Thickness = 1
+        bs.Parent = e.Box
+        e.BoxStroke = bs
+        e.Box.Parent = sg
+
+        e.Fill.Name = "Fill"
+        e.Fill.BackgroundColor3 = Config.BoxColor
+        e.Fill.BackgroundTransparency = 0.85
+        e.Fill.BorderSizePixel = 0
+        e.Fill.Visible = false
+        e.Fill.Parent = sg
+
+        e.Name.Name = "Name"
+        e.Name.BackgroundTransparency = 1
+        e.Name.Font = Enum.Font.Code
+        e.Name.TextSize = 13
+        e.Name.TextColor3 = Config.NameColor
+        e.Name.TextStrokeTransparency = 0
+        e.Name.Text = ""
+        e.Name.Visible = false
+        e.Name.Parent = sg
+
+        e.Dist.Name = "Dist"
+        e.Dist.BackgroundTransparency = 1
+        e.Dist.Font = Enum.Font.Code
+        e.Dist.TextSize = 12
+        e.Dist.TextColor3 = Color3.new(1, 1, 1)
+        e.Dist.TextStrokeTransparency = 0
+        e.Dist.Text = ""
+        e.Dist.Visible = false
+        e.Dist.Parent = sg
+
+        e.HpBack.Name = "HpBack"
+        e.HpBack.BackgroundColor3 = Color3.new(0, 0, 0)
+        e.HpBack.BorderSizePixel = 0
+        e.HpBack.Visible = false
+        e.HpBack.Parent = sg
+
+        e.HpFill.Name = "HpFill"
+        e.HpFill.BackgroundColor3 = Config.HealthColor
+        e.HpFill.BorderSizePixel = 0
+        e.HpFill.Size = UDim2.new(1, 0, 1, 0)
+        e.HpFill.Parent = e.HpBack
+
+        e.Tracer.Name = "Tracer"
+        e.Tracer.BackgroundColor3 = Config.TracerColor
+        e.Tracer.BorderSizePixel = 0
+        e.Tracer.Visible = false
+        e.Tracer.Parent = sg
+
+        e.Head.Name = "Head"
+        e.Head.BackgroundTransparency = 1
+        e.Head.BorderSizePixel = 0
+        e.Head.Visible = false
+        local hs = Instance.new("UIStroke")
+        hs.Color = Config.HeadDotColor
+        hs.Thickness = 1
+        hs.Parent = e.Head
+        e.HeadStroke = hs
+        e.Head.Parent = sg
+
+        for i = 1, 14 do
+            local b = Instance.new("Frame")
+            b.Name = "Bone" .. i
+            b.BackgroundColor3 = Config.SkeletonColor
+            b.BorderSizePixel = 0
+            b.Visible = false
+            b.Parent = sg
+            e.Bones[i] = b
+        end
+
+        pool[plr] = e
+    end
+
+    local function hide(e)
+        e.Outline.Visible = false
+        e.Box.Visible = false
+        e.Fill.Visible = false
+        e.Name.Visible = false
+        e.Dist.Visible = false
+        e.HpBack.Visible = false
+        e.Tracer.Visible = false
+        e.Head.Visible = false
+        for _, b in ipairs(e.Bones) do b.Visible = false end
+        if e.HL then e.HL.Enabled = false end
+    end
+
+    local function destroyEntry(plr)
+        local e = pool[plr]
+        if not e then return end
+        for _, obj in ipairs({e.Outline, e.Box, e.Fill, e.Name, e.Dist, e.HpBack, e.Tracer, e.Head}) do
+            if obj then obj:Destroy() end
+        end
+        for _, b in ipairs(e.Bones) do b:Destroy() end
+        if e.HL then e.HL:Destroy() end
+        pool[plr] = nil
+    end
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    local function isVisible(targetChar, part)
+        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, targetChar}
+        local origin = Camera.CFrame.Position
+        return Workspace:Raycast(origin, part.Position - origin, rayParams) == nil
+    end
+
+    local function w2s(pos)
+        local v, on = Camera:WorldToViewportPoint(pos)
+        return Vector2.new(v.X, v.Y), on, v.Z
+    end
+
+    local function lineBetween(frame, a, b)
+        local dx = b.X - a.X
+        local dy = b.Y - a.Y
+        local len = math.sqrt(dx * dx + dy * dy)
+        local ang = math.deg(math.atan2(dy, dx))
+        frame.Position = UDim2.fromOffset(a.X, a.Y)
+        frame.Size = UDim2.fromOffset(len, 1)
+        frame.Rotation = ang
+    end
+
+    local function step()
+        Camera = Workspace.CurrentCamera
+        if not Camera then return end
+        local screen = Camera.ViewportSize
+        local hue = (tick() % 5) / 5
+
+        for plr, e in pairs(pool) do
+            local char = plr.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            local head = char and char:FindFirstChild("Head")
+
+            if not (Config.Enabled and char and hum and root and head and hum.Health > 0) then
+                hide(e)
+                continue
+            end
+
+            local isTeam = plr.Team ~= nil and plr.Team == LocalPlayer.Team
+            local dist = (Camera.CFrame.Position - root.Position).Magnitude
+            if (Config.TeamCheck and isTeam) or dist > Config.MaxDistance then
+                hide(e)
+                continue
+            end
+
+            local boxCol = Config.BoxColor
+            local skelCol = Config.SkeletonColor
+            local traceCol = Config.TracerColor
+            local headCol = Config.HeadDotColor
+            local nameCol = Config.NameColor
+            local hpCol = Config.HealthColor
+
+            if Config.Rainbow then
+                local rc = Color3.fromHSV(hue, 1, 1)
+                boxCol, skelCol, traceCol, headCol, nameCol = rc, rc, rc, rc, rc
+            elseif Config.VisibleCheck and not isVisible(char, head) then
+                boxCol, skelCol, traceCol, headCol, nameCol = Config.HiddenColor, Config.HiddenColor, Config.HiddenColor, Config.HiddenColor, Config.HiddenColor
+            end
+
+            if Config.Chams then
+                if not e.HL then
+                    e.HL = Instance.new("Highlight")
+                    e.HL.Name = "__rw_cham"
+                    e.HL.FillTransparency = 0.6
+                    e.HL.OutlineTransparency = 0
+                    e.HL.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    e.HL.Parent = plr
+                end
+                e.HL.Adornee = char
+                e.HL.FillColor = boxCol
+                e.HL.OutlineColor = boxCol
+                e.HL.Enabled = true
+            elseif e.HL then
+                e.HL.Enabled = false
+            end
+
+            local top, onTop, z1 = w2s(head.Position + Vector3.new(0, 0.6, 0))
+            local bot, onBot, z2 = w2s(root.Position - Vector3.new(0, 3, 0))
+            if not (onTop or onBot) or z1 < 0 or z2 < 0 then
+                hide(e)
+                if e.HL then e.HL.Enabled = Config.Chams end
+                continue
+            end
+
+            local height = math.abs(bot.Y - top.Y)
+            local width = height * 0.55
+            local cx = (top.X + bot.X) / 2
+            local pos = Vector2.new(cx - width / 2, top.Y)
+            local size = Vector2.new(width, height)
+
+            e.Outline.Visible = Config.Box
+            e.Box.Visible = Config.Box
+            e.Fill.Visible = Config.Box and Config.BoxFill
+            if Config.Box then
+                e.Outline.Position = UDim2.fromOffset(pos.X, pos.Y)
+                e.Outline.Size = UDim2.fromOffset(size.X, size.Y)
+                e.Box.Position = UDim2.fromOffset(pos.X, pos.Y)
+                e.Box.Size = UDim2.fromOffset(size.X, size.Y)
+                e.BoxStroke.Color = boxCol
+                e.Fill.Position = UDim2.fromOffset(pos.X, pos.Y)
+                e.Fill.Size = UDim2.fromOffset(size.X, size.Y)
+                e.Fill.BackgroundColor3 = boxCol
+            end
+
+            e.Name.Visible = Config.Name
+            if Config.Name then
+                e.Name.Text = plr.DisplayName
+                e.Name.Position = UDim2.fromOffset(cx - 60, top.Y - 16)
+                e.Name.Size = UDim2.fromOffset(120, 16)
+                e.Name.TextColor3 = nameCol
+            end
+
+            e.Dist.Visible = Config.Distance
+            if Config.Distance then
+                e.Dist.Text = string.format("[%dm]", math.floor(dist))
+                e.Dist.Position = UDim2.fromOffset(cx - 60, bot.Y + 2)
+                e.Dist.Size = UDim2.fromOffset(120, 14)
+                e.Dist.TextColor3 = Color3.new(1, 1, 1)
+            end
+
+            e.HpBack.Visible = Config.Health
+            if Config.Health then
+                local pct = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+                e.HpBack.Position = UDim2.fromOffset(pos.X - 5, pos.Y)
+                e.HpBack.Size = UDim2.fromOffset(2, height)
+                e.HpFill.Size = UDim2.new(1, 0, pct, 0)
+                e.HpFill.Position = UDim2.new(0, 0, 1 - pct, 0)
+                e.HpFill.BackgroundColor3 = hpCol:Lerp(Color3.fromRGB(255, 0, 0), 1 - pct)
+            end
+
+            e.Tracer.Visible = Config.Tracer
+            if Config.Tracer then
+                local o = Config.TracerOrigin
+                local from =
+                    o == "Center" and screen / 2 or
+                    o == "Top" and Vector2.new(screen.X / 2, 0) or
+                    o == "Mouse" and UIS:GetMouseLocation() or
+                    Vector2.new(screen.X / 2, screen.Y)
+                lineBetween(e.Tracer, from, Vector2.new(cx, bot.Y))
+                e.Tracer.BackgroundColor3 = traceCol
+            end
+
+            e.Head.Visible = Config.HeadDot
+            if Config.HeadDot then
+                local hp = w2s(head.Position)
+                local r = math.clamp(height * 0.09, 2, 14)
+                e.Head.Position = UDim2.fromOffset(hp.X - r, hp.Y - r)
+                e.Head.Size = UDim2.fromOffset(r * 2, r * 2)
+                e.HeadStroke.Color = headCol
+            end
+
+            local map = hum.RigType == Enum.HumanoidRigType.R15 and R15 or R6
+            for i, bone in ipairs(e.Bones) do
+                local pair = map[i]
+                local a = pair and char:FindFirstChild(pair[1])
+                local b = pair and char:FindFirstChild(pair[2])
+                if Config.Skeleton and a and b then
+                    local pa, onA = w2s(a.Position)
+                    local pb, onB = w2s(b.Position)
+                    bone.Visible = onA and onB
+                    if bone.Visible then
+                        lineBetween(bone, pa, pb)
+                        bone.BackgroundColor3 = skelCol
+                    end
+                else
+                    bone.Visible = false
+                end
+            end
+        end
+    end
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then makeEntry(p) end
+    end
+    table.insert(connections, Players.PlayerAdded:Connect(function(p)
+        if p ~= LocalPlayer then makeEntry(p) end
+    end))
+    table.insert(connections, Players.PlayerRemoving:Connect(destroyEntry))
+    table.insert(connections, RunService.RenderStepped:Connect(step))
+
+    local function Unload()
+        for _, c in ipairs(connections) do c:Disconnect() end
+        for plr in pairs(pool) do destroyEntry(plr) end
+        sg:Destroy()
+        if genv.RW_ESP == ESP then genv.RW_ESP = nil end
+    end
+
+    ESP = {Config = Config, Unload = Unload, Gui = sg}
+    genv.RW_ESP = ESP
+end
+
+do
+    local Mouse = LP:GetMouse()
+    local Config = {
+        Aimbot = false, AimKey = "RMB", AimPart = "Head",
+        Smoothness = 35, AimFOV = 160, ShowAimFOV = false, Prediction = 0, TargetLock = false,
+        Silent = false, SilentPart = "Head", SilentFOV = 200, ShowSilentFOV = false, HitChance = 100,
+        TeamCheck = false, WallCheck = false, MaxDistance = 2000,
+        Walk = false, WalkSpeed = 32, WalkMode = "Property",
+        AimFovColor = Color3.fromRGB(255, 45, 45),
+        SilentFovColor = Color3.fromRGB(200, 200, 200),
+    }
+
+    local State = {SilentPos = nil, SilentPart = nil, AimPart = nil, Locked = nil}
+    local A = {Config = Config, State = State}
+    local conns = {}
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "__rw_aim"
+    sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true
+    sg.DisplayOrder = 998
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(sg) end end)
+    sg.Parent = CoreGui
+
+    local aimCircle = Instance.new("Frame")
+    aimCircle.Name = "AimFov"
+    aimCircle.BackgroundTransparency = 1
+    aimCircle.Visible = false
+    local acs = Instance.new("UIStroke")
+    acs.Color = Config.AimFovColor
+    acs.Thickness = 1
+    acs.Parent = aimCircle
+    local acr = Instance.new("UICorner")
+    acr.CornerRadius = UDim.new(1, 0)
+    acr.Parent = aimCircle
+    aimCircle.Parent = sg
+
+    local silentCircle = Instance.new("Frame")
+    silentCircle.Name = "SilentFov"
+    silentCircle.BackgroundTransparency = 1
+    silentCircle.Visible = false
+    local scs = Instance.new("UIStroke")
+    scs.Color = Config.SilentFovColor
+    scs.Thickness = 1
+    scs.Parent = silentCircle
+    local scr = Instance.new("UICorner")
+    scr.CornerRadius = UDim.new(1, 0)
+    scr.Parent = silentCircle
+    silentCircle.Parent = sg
+
+    local KEYS = {Shift = Enum.KeyCode.LeftShift, E = Enum.KeyCode.E, Q = Enum.KeyCode.Q}
+    local function held(k)
+        if k == "Always" then return true end
+        if k == "RMB" then return UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) end
+        if k == "LMB" then return UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) end
+        return KEYS[k] and UIS:IsKeyDown(KEYS[k]) or false
+    end
+
+    local NAMES = {
+        Head = {"Head"},
+        Torso = {"UpperTorso", "Torso", "HumanoidRootPart"},
+        Closest = {"Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso"},
+    }
+    local RANDOM_POOL = {"Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso"}
+    local randName, randAt = "Head", 0
+
+    local function candidates(char, mode)
+        if mode == "Random" then
+            if os.clock() - randAt > 0.2 then
+                randAt = os.clock()
+                randName = RANDOM_POOL[math.random(#RANDOM_POOL)]
+            end
+            local p = char:FindFirstChild(randName) or char:FindFirstChild("HumanoidRootPart")
+            return p and {p} or {}
+        end
+        local out = {}
+        for _, n in ipairs(NAMES[mode] or NAMES.Head) do
+            local p = char:FindFirstChild(n)
+            if p then out[#out + 1] = p; if mode ~= "Closest" then break end end
+        end
+        return out
+    end
+
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    local function visible(char, part)
+        rp.FilterDescendantsInstances = {LP.Character, char}
+        local o = Camera.CFrame.Position
+        return Workspace:Raycast(o, part.Position - o, rp) == nil
+    end
+
+    local function pick(radius, mode)
+        local mouse = UIS:GetMouseLocation()
+        local bestPart, bestD
+        for _, p in ipairs(Players:GetPlayers()) do
+            local char = p ~= LP and p.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 and not (Config.TeamCheck and p.Team ~= nil and p.Team == LP.Team) then
+                for _, part in ipairs(candidates(char, mode)) do
+                    local v, on = Camera:WorldToViewportPoint(part.Position)
+                    if on and v.Z > 0 then
+                        local d = (Vector2.new(v.X, v.Y) - mouse).Magnitude
+                        if d <= radius and (not bestD or d < bestD)
+                            and (Camera.CFrame.Position - part.Position).Magnitude <= Config.MaxDistance
+                            and (not Config.WallCheck or visible(char, part)) then
+                            bestPart, bestD = part, d
+                        end
+                    end
+                end
+            end
+        end
+        return bestPart
+    end
+
+    local function aimPoint(part)
+        return part.Position + part.AssemblyLinearVelocity * Config.Prediction
+    end
+
+    RunService:BindToRenderStep("RW_AIM_STEP", Enum.RenderPriority.Camera.Value + 1, function(dt)
+        Camera = Workspace.CurrentCamera
+        if not Camera then return end
+        local mouse = UIS:GetMouseLocation()
+        aimCircle.Visible = Config.Aimbot and Config.ShowAimFOV
+        aimCircle.Position = UDim2.fromOffset(mouse.X - Config.AimFOV, mouse.Y - Config.AimFOV)
+        aimCircle.Size = UDim2.fromOffset(Config.AimFOV * 2, Config.AimFOV * 2)
+        acs.Color = Config.AimFovColor
+        silentCircle.Visible = Config.Silent and Config.ShowSilentFOV
+        silentCircle.Position = UDim2.fromOffset(mouse.X - Config.SilentFOV, mouse.Y - Config.SilentFOV)
+        silentCircle.Size = UDim2.fromOffset(Config.SilentFOV * 2, Config.SilentFOV * 2)
+        scs.Color = Config.SilentFovColor
+        State.SilentPos, State.SilentPart, State.AimPart = nil, nil, nil
+
+        if Config.Silent then
+            local part = pick(Config.SilentFOV, Config.SilentPart)
+            if part and math.random(1, 100) <= Config.HitChance then
+                State.SilentPart, State.SilentPos = part, aimPoint(part)
+            end
+        end
+
+        if Config.Aimbot and held(Config.AimKey) and not UIS:GetFocusedTextBox() then
+            local part
+            if Config.TargetLock and State.Locked then
+                local lc = State.Locked.Character
+                local lh = lc and lc:FindFirstChildOfClass("Humanoid")
+                if lh and lh.Health > 0 then part = candidates(lc, Config.AimPart)[1]
+                else State.Locked = nil end
+            end
+            if not part then
+                part = pick(Config.AimFOV, Config.AimPart)
+                if part and Config.TargetLock then State.Locked = Players:GetPlayerFromCharacter(part.Parent) end
+            end
+            if part then
+                State.AimPart = part
+                local cf = Camera.CFrame
+                local goal = CFrame.lookAt(cf.Position, aimPoint(part))
+                local k = math.clamp((101 - Config.Smoothness) / 100, 0.01, 1)
+                local alpha = 1 - (1 - k) ^ (dt * 60)
+                Camera.CFrame = cf:Lerp(goal, alpha)
+            end
+        else State.Locked = nil end
+    end)
+
+    local savedWS
+    local function restoreWS()
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum and savedWS then hum.WalkSpeed = savedWS end
+        savedWS = nil
+    end
+    table.insert(conns, LP.CharacterAdded:Connect(function() savedWS = nil end))
+    table.insert(conns, RunService.Heartbeat:Connect(function(dt)
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        local root = ch and ch:FindFirstChild("HumanoidRootPart")
+        if not (hum and root) then return end
+        if Config.Walk then
+            if Config.WalkMode == "Property" then
+                if not savedWS then savedWS = hum.WalkSpeed end
+                if hum.WalkSpeed ~= Config.WalkSpeed then hum.WalkSpeed = Config.WalkSpeed end
+            else
+                if savedWS then restoreWS() end
+                local md = hum.MoveDirection
+                local extra = Config.WalkSpeed - hum.WalkSpeed
+                if md.Magnitude > 0 and extra > 0 then root.CFrame = root.CFrame + md * extra * dt end
+            end
+        elseif savedWS then restoreWS() end
+    end))
+
+    if hookmetamethod and not genv.RW_AIM_HOOKED then
+        genv.RW_AIM_HOOKED = true
+        local oldNC
+        oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local m = getnamecallmethod()
+            if self == Workspace then
+                local a = genv.RW_AIM
+                local pos = a and a.Config.Silent and a.State.SilentPos
+                if pos and not checkcaller() then
+                    if m == "Raycast" then
+                        local origin, dir = ...
+                        if typeof(origin) == "Vector3" and typeof(dir) == "Vector3" and dir.Magnitude > 0 then
+                            setnamecallmethod(m)
+                            return oldNC(self, origin, (pos - origin).Unit * dir.Magnitude, select(3, ...))
+                        end
+                    elseif m == "FindPartOnRay" or m == "FindPartOnRayWithIgnoreList" or m == "FindPartOnRayWithWhitelist" then
+                        local ray = ...
+                        if typeof(ray) == "Ray" and ray.Direction.Magnitude > 0 then
+                            setnamecallmethod(m)
+                            return oldNC(self, Ray.new(ray.Origin, (pos - ray.Origin).Unit * ray.Direction.Magnitude), select(2, ...))
+                        end
+                    end
+                end
+            end
+            return oldNC(self, ...)
+        end))
+        local oldIdx
+        oldIdx = hookmetamethod(game, "__index", newcclosure(function(self, k)
+            if self == Mouse and not checkcaller() then
+                local a = genv.RW_AIM
+                if a and a.Config.Silent and a.State.SilentPos then
+                    if k == "Hit" then return CFrame.new(a.State.SilentPos) end
+                    if k == "Target" then return a.State.SilentPart end
+                end
+            end
+            return oldIdx(self, k)
+        end))
+    end
+
+    function A.Unload()
+        pcall(function() RunService:UnbindFromRenderStep("RW_AIM_STEP") end)
+        for _, c in ipairs(conns) do c:Disconnect() end
+        pcall(restoreWS)
+        sg:Destroy()
+        if genv.RW_AIM == A then genv.RW_AIM = nil end
+    end
+
+    AIM = A
+    genv.RW_AIM = A
+end
+
+do
+    local baseFov = Workspace.CurrentCamera.FieldOfView
+    local Config = {
+        NoRecoil = false, RecoilStrength = 85, Skin = "Off",
+        Trigger = false, TriggerDelay = 60, TriggerTeamCheck = false,
+        InfJump = false, Noclip = false, Fullbright = false,
+        Crosshair = false, CrosshairSize = 8, CrosshairGap = 4, CrosshairDot = false,
+        FovOverride = false, FovValue = math.floor(baseFov + 0.5),
+        CrosshairColor3 = Color3.fromRGB(255, 45, 45),
+    }
+    local X = {
+        Config = Config,
+        SkinList = {"Off", "Neon Red", "Gold", "Ice", "Galaxy", "Void", "Rainbow"},
+        BaseFov = baseFov,
+    }
+    local conns = {}
+    local function track(c) conns[#conns + 1] = c return c end
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "__rw_ex"
+    sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true
+    sg.DisplayOrder = 997
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(sg) end end)
+    sg.Parent = CoreGui
+
+    local cross = {}
+    for i = 1, 4 do
+        local f = Instance.new("Frame")
+        f.BackgroundColor3 = Config.CrosshairColor3
+        f.BorderSizePixel = 0
+        f.Visible = false
+        f.Parent = sg
+        cross[i] = f
+    end
+    local dot = Instance.new("Frame")
+    dot.BackgroundColor3 = Config.CrosshairColor3
+    dot.BorderSizePixel = 0
+    dot.Visible = false
+    local dotCorner = Instance.new("UICorner")
+    dotCorner.CornerRadius = UDim.new(1, 0)
+    dotCorner.Parent = dot
+    dot.Parent = sg
+    local DIRS = {Vector2.new(0, -1), Vector2.new(0, 1), Vector2.new(-1, 0), Vector2.new(1, 0)}
+
+    local SKINS = {
+        ["Neon Red"] = {Color3.fromRGB(255, 30, 30), Enum.Material.Neon, 0},
+        ["Gold"]     = {Color3.fromRGB(255, 200, 60), Enum.Material.Metal, 0.35},
+        ["Ice"]      = {Color3.fromRGB(150, 230, 255), Enum.Material.Glass, 0.2},
+        ["Galaxy"]   = {Color3.fromRGB(120, 40, 255), Enum.Material.ForceField, 0},
+        ["Void"]     = {Color3.fromRGB(8, 8, 8), Enum.Material.SmoothPlastic, 0.6},
+    }
+    local SKIP = {"arm$", "^arm", "hand$", "glove", "sleeve", "finger", "shirt"}
+    local function skippable(name)
+        name = name:lower()
+        for _, pat in ipairs(SKIP) do if name:find(pat) then return true end end
+        return false
+    end
+    local function gather()
+        local out = {}
+        local function scan(root)
+            for _, d in ipairs(root:GetDescendants()) do
+                if d:IsA("BasePart") and not skippable(d.Name) then out[#out + 1] = d end
+            end
+        end
+        local ch = LP.Character
+        if ch then for _, t in ipairs(ch:GetChildren()) do if t:IsA("Tool") then scan(t) end end end
+        local cam = Workspace.CurrentCamera
+        if cam then for _, c in ipairs(cam:GetChildren()) do
+            if c:IsA("Model") and not c:FindFirstChildOfClass("Humanoid") then scan(c) end
+        end end
+        return out
+    end
+
+    local orig, stash = {}, {}
+    local function remember(p)
+        if orig[p] then return end
+        orig[p] = {Color = p.Color, Material = p.Material, Reflectance = p.Reflectance,
+            Tex = p:IsA("MeshPart") and p.TextureID or nil}
+    end
+    local function restoreSkins()
+        for p, o in pairs(orig) do
+            if p.Parent then
+                p.Color, p.Material, p.Reflectance = o.Color, o.Material, o.Reflectance
+                if o.Tex ~= nil then pcall(function() p.TextureID = o.Tex end) end
+            end
+        end
+        for sa, par in pairs(stash) do if par.Parent then sa.Parent = par end end
+        orig, stash = {}, {}
+    end
+    local fbOrig
+    local function restoreLight()
+        if not fbOrig then return end
+        for k, v in pairs(fbOrig) do pcall(function() Lighting[k] = v end) end
+        fbOrig = nil
+    end
+    local noclipped = {}
+    local function restoreNoclip()
+        for p in pairs(noclipped) do if p.Parent then p.CanCollide = true end end
+        noclipped = {}
+    end
+
+    local lastPitch, userY, fovWas = nil, 0, false
+    track(UIS.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement then userY += i.Delta.Y end
+    end))
+
+    RunService:BindToRenderStep("RW_EX_STEP", Enum.RenderPriority.Camera.Value + 3, function()
+        Camera = Workspace.CurrentCamera
+        local cam = Camera
+        if not cam then return end
+        if Config.FovOverride then cam.FieldOfView = Config.FovValue; fovWas = true
+        elseif fovWas then cam.FieldOfView = baseFov; fovWas = false end
+        local pitch = math.asin(math.clamp(cam.CFrame.LookVector.Y, -1, 1))
+        if Config.NoRecoil and lastPitch and AIM.State.AimPart == nil
+            and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+            local d = pitch - lastPitch
+            if d > 0.0004 and userY > -1 then
+                local comp = d * (Config.RecoilStrength / 100)
+                cam.CFrame = cam.CFrame * CFrame.Angles(-comp, 0, 0)
+                pitch -= comp
+            end
+        end
+        lastPitch, userY = pitch, 0
+        local on = Config.Crosshair
+        local col = Config.CrosshairColor3
+        local c = cam.ViewportSize / 2
+        local s, g = Config.CrosshairSize, Config.CrosshairGap
+        for i, d in ipairs(DIRS) do
+            local f = cross[i]
+            f.Visible, f.BackgroundColor3 = on, col
+            if d.X ~= 0 then
+                f.Position = UDim2.fromOffset(c.X + d.X * g, c.Y - 0.75)
+                f.Size = UDim2.fromOffset(s, 1.5)
+            else
+                f.Position = UDim2.fromOffset(c.X - 0.75, c.Y + d.Y * g)
+                f.Size = UDim2.fromOffset(1.5, s)
+            end
+        end
+        dot.Visible = on and Config.CrosshairDot
+        dot.Position = UDim2.fromOffset(c.X - 1.5, c.Y - 1.5)
+        dot.Size = UDim2.fromOffset(3, 3)
+        dot.BackgroundColor3 = col
+    end)
+
+    local lastScan, lastShot = 0, 0
+    local trigParams = RaycastParams.new()
+    trigParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    track(RunService.Heartbeat:Connect(function()
+        local now = os.clock()
+        if Config.Skin == "Off" then
+            if next(orig) or next(stash) then restoreSkins() end
+        else
+            if Config.Skin == "Rainbow" then
+                local col = Color3.fromHSV((now % 4) / 4, 1, 1)
+                for p in pairs(orig) do if p.Parent then p.Color = col end end
+            end
+            if now - lastScan >= 0.25 then
+                lastScan = now
+                local preset = SKINS[Config.Skin]
+                for _, p in ipairs(gather()) do
+                    remember(p)
+                    local sa = p:FindFirstChildOfClass("SurfaceAppearance")
+                    if sa then stash[sa] = p; sa.Parent = nil end
+                    if p:IsA("MeshPart") then pcall(function() p.TextureID = "" end) end
+                    if preset then p.Color, p.Material, p.Reflectance = preset[1], preset[2], preset[3]
+                    else p.Material, p.Reflectance = Enum.Material.Neon, 0 end
+                end
+            end
+        end
+        if Config.Fullbright then
+            if not fbOrig then
+                fbOrig = {
+                    Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime,
+                    FogEnd = Lighting.FogEnd, GlobalShadows = Lighting.GlobalShadows,
+                    Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient,
+                }
+            end
+            Lighting.Brightness = 2; Lighting.ClockTime = 14; Lighting.FogEnd = 1e6
+            Lighting.GlobalShadows = false
+            Lighting.Ambient = Color3.fromRGB(200, 200, 200)
+            Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200)
+        elseif fbOrig then restoreLight() end
+        if Config.Trigger and Camera then
+            local ch = LP.Character
+            if ch then trigParams.FilterDescendantsInstances = {ch} end
+            local m = UIS:GetMouseLocation()
+            local ray = Camera:ViewportPointToRay(m.X, m.Y)
+            local hit = Workspace:Raycast(ray.Origin, ray.Direction * 2000, trigParams)
+            if hit then
+                local model = hit.Instance:FindFirstAncestorOfClass("Model")
+                local plr = model and Players:GetPlayerFromCharacter(model)
+                local hum = model and model:FindFirstChildOfClass("Humanoid")
+                if plr and plr ~= LP and hum and hum.Health > 0
+                    and not (Config.TriggerTeamCheck and plr.Team ~= nil and plr.Team == LP.Team)
+                    and now - lastShot >= Config.TriggerDelay / 1000 then
+                    lastShot = now
+                    task.spawn(function()
+                        if mouse1click then mouse1click()
+                        elseif mouse1press and mouse1release then
+                            mouse1press(); task.wait(0.02); mouse1release()
+                        end
+                    end)
+                end
+            end
+        end
+    end))
+
+    track(RunService.Stepped:Connect(function()
+        local ch = LP.Character
+        if Config.Noclip and ch then
+            for _, p in ipairs(ch:GetDescendants()) do
+                if p:IsA("BasePart") and p.CanCollide then noclipped[p] = true; p.CanCollide = false end
+            end
+        elseif next(noclipped) then restoreNoclip() end
+    end))
+
+    track(UIS.JumpRequest:Connect(function()
+        if not Config.InfJump then return end
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end))
+
+    function X.Unload()
+        pcall(function() RunService:UnbindFromRenderStep("RW_EX_STEP") end)
+        for _, c in ipairs(conns) do c:Disconnect() end
+        pcall(restoreSkins); pcall(restoreLight); pcall(restoreNoclip)
+        sg:Destroy()
+        local cam = Workspace.CurrentCamera
+        if fovWas and cam then cam.FieldOfView = baseFov end
+        if genv.RW_EX == X then genv.RW_EX = nil end
+    end
+
+    EX = X
+    genv.RW_EX = X
+end
+
+function unloadAll()
+    pcall(EX.Unload)
+    pcall(AIM.Unload)
+    pcall(ESP.Unload)
+    if genv.RW_GUI then pcall(genv.RW_GUI.Destroy) end
+end
+
+do
+    local EC, AC, XC = ESP.Config, AIM.Config, EX.Config
+
+    local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+    local Library      = loadstring(game:HttpGet(repo .. "Library.lua"))()
+    local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+    local SaveManager  = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+    local Options = Library.Options
+    local Toggles = Library.Toggles
+
+    Library.ForceCheckbox = false
+    Library.ShowToggleFrameInKeybinds = true
+
+    local Window = Library:CreateWindow({
+        Title = "AV∅X",
+        Footer = "v1.1",
+        Icon = 930266185582736,
+        NotifySide = "Right",
+        ShowCustomCursor = true,
+    })
+
+    local Tabs = {
+        AIM  = Window:AddTab("AIM", "crosshair"),
+        ESP  = Window:AddTab("ESP", "eye"),
+        MOVE = Window:AddTab("MOVE", "footprints"),
+        GUN  = Window:AddTab("GUN", "target"),
+        VIS  = Window:AddTab("VIS", "sun"),
+        ["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+    }
+
+    local function cfgToggle(g, idx, text, cfg, key, tip, colorKey, defaultColor)
+        local t = g:AddToggle(idx, {Text = text, Default = cfg[key] and true or false, Tooltip = tip,
+            Callback = function(v) cfg[key] = v end})
+        if colorKey and defaultColor then
+            t:AddColorPicker(idx .. "_Color", {
+                Default = defaultColor,
+                Title = text .. " Color",
+                Transparency = 0,
+                Callback = function(c) cfg[colorKey] = c end,
+            })
+        end
+        return t
+    end
+    local function cfgSlider(g, idx, text, cfg, key, min, max, round, suffix, tip)
+        g:AddSlider(idx, {Text = text, Default = cfg[key], Min = min, Max = max,
+            Rounding = round, Suffix = suffix, Tooltip = tip,
+            Callback = function(v) cfg[key] = v end})
+    end
+    local function cfgDropdown(g, idx, text, cfg, key, values, tip)
+        g:AddDropdown(idx, {Text = text, Values = values, Default = cfg[key], Tooltip = tip,
+            Callback = function(v) cfg[key] = v end})
+    end
+
+    do
+        local L = Tabs.AIM:AddGroupbox({Side = "Left",  Name = "Aimbot",     IconName = "crosshair"})
+        local R = Tabs.AIM:AddGroupbox({Side = "Right", Name = "Silent Aim", IconName = "eye-off"})
+        local T = Tabs.AIM:AddGroupbox({Side = "Right", Name = "Targeting",  IconName = "users"})
+        cfgToggle(L, "AC_Aimbot",     "Aimbot",       AC, "Aimbot")
+        cfgSlider(L, "AC_Smooth",     "Smoothness",   AC, "Smoothness", 1, 100, 0, "%")
+        cfgSlider(L, "AC_AimFOV",     "Aim FOV",      AC, "AimFOV", 20, 600, 0, "px")
+        cfgDropdown(L, "AC_AimKey",   "Aim Key",      AC, "AimKey",   {"RMB","LMB","Shift","E","Q","Always"})
+        cfgDropdown(L, "AC_AimPart",  "Aim Part",     AC, "AimPart",  {"Head","Torso","Closest"})
+        cfgToggle(L, "AC_TargetLock", "Target Lock",  AC, "TargetLock")
+        cfgSlider(L, "AC_Prediction", "Prediction",   AC, "Prediction", 0, 0.3, 2, "s")
+        cfgToggle(L, "AC_ShowAimFOV", "Show Aim FOV", AC, "ShowAimFOV", "Aim FOV ring color", "AimFovColor", AC.AimFovColor)
+        cfgToggle(R, "AC_Silent",        "Silent Aim",      AC, "Silent")
+        cfgSlider(R, "AC_SilentFOV",     "Silent FOV",      AC, "SilentFOV", 20, 800, 0, "px")
+        cfgSlider(R, "AC_HitChance",     "Hit Chance",      AC, "HitChance", 1, 100, 0, "%")
+        cfgDropdown(R, "AC_SilentPart",  "Silent Part",     AC, "SilentPart", {"Head","Torso","Closest","Random"})
+        cfgToggle(R, "AC_ShowSilentFOV", "Show Silent FOV", AC, "ShowSilentFOV", "Silent FOV ring color", "SilentFovColor", AC.SilentFovColor)
+        cfgToggle(T, "AC_TeamCheck", "Team Check",   AC, "TeamCheck")
+        cfgToggle(T, "AC_WallCheck", "Wall Check",   AC, "WallCheck")
+        cfgSlider(T, "AC_MaxDist",   "Max Distance", AC, "MaxDistance", 100, 3000, 0, "m")
+    end
+
+    do
+        local L = Tabs.ESP:AddGroupbox({Side = "Left",  Name = "Overlay", IconName = "eye"})
+        local R = Tabs.ESP:AddGroupbox({Side = "Right", Name = "Filters", IconName = "filter"})
+        cfgToggle(L, "EC_Enabled",     "ESP Enabled",  EC, "Enabled")
+        cfgSlider(L, "EC_MaxDist",     "Max Distance", EC, "MaxDistance", 100, 3000, 0, "m")
+        cfgToggle(L, "EC_Box",         "Boxes",        EC, "Box", "Box color", "BoxColor", EC.BoxColor)
+        cfgToggle(L, "EC_BoxFill",     "Box Fill",     EC, "BoxFill", "Fill color", "BoxColor", EC.BoxColor)
+        cfgToggle(L, "EC_Name",        "Names",        EC, "Name", "Name color", "NameColor", EC.NameColor)
+        cfgToggle(L, "EC_Health",      "Health Bar",   EC, "Health", "Health color", "HealthColor", EC.HealthColor)
+        cfgToggle(L, "EC_Distance",    "Distance",     EC, "Distance")
+        cfgToggle(L, "EC_Tracer",      "Tracers",      EC, "Tracer", "Tracer color", "TracerColor", EC.TracerColor)
+        cfgDropdown(L, "EC_TracerOrigin","Tracer Origin", EC, "TracerOrigin", {"Bottom","Center","Top","Mouse"})
+        cfgToggle(L, "EC_HeadDot",     "Head Dot",     EC, "HeadDot", "Head dot color", "HeadDotColor", EC.HeadDotColor)
+        cfgToggle(L, "EC_Skeleton",    "Skeleton",     EC, "Skeleton", "Skeleton color", "SkeletonColor", EC.SkeletonColor)
+        cfgToggle(L, "EC_Chams",       "Chams",        EC, "Chams", "Chams color", "BoxColor", EC.BoxColor)
+        cfgToggle(R, "EC_TeamCheck",  "Team Check",    EC, "TeamCheck")
+        cfgToggle(R, "EC_VisCheck",   "Visible Check", EC, "VisibleCheck")
+        cfgToggle(R, "EC_Rainbow",    "Rainbow",       EC, "Rainbow")
+    end
+
+    do
+        local L = Tabs.MOVE:AddGroupbox({Side = "Left",  Name = "Speed",    IconName = "gauge"})
+        local R = Tabs.MOVE:AddGroupbox({Side = "Right", Name = "Movement", IconName = "move"})
+        cfgToggle(L, "AC_Walk",      "Walkspeed", AC, "Walk")
+        cfgSlider(L, "AC_WalkSpeed", "Speed",     AC, "WalkSpeed", 16, 200, 0, "")
+        cfgDropdown(L, "AC_WalkMode","Mode",      AC, "WalkMode",  {"Property","CFrame"})
+        cfgToggle(R, "XC_InfJump", "Infinite Jump", XC, "InfJump")
+        cfgToggle(R, "XC_Noclip",  "Noclip",        XC, "Noclip")
+    end
+
+    do
+        local L = Tabs.GUN:AddGroupbox({Side = "Left",  Name = "No Recoil",  IconName = "crosshair"})
+        local R = Tabs.GUN:AddGroupbox({Side = "Right", Name = "Triggerbot", IconName = "mouse-pointer-2"})
+        local S = Tabs.GUN:AddGroupbox({Side = "Right", Name = "Skins",      IconName = "palette"})
+        cfgToggle(L, "XC_NoRecoil", "No Recoil", XC, "NoRecoil")
+        cfgSlider(L, "XC_Recoil",   "Strength",  XC, "RecoilStrength", 10, 100, 0, "%")
+        cfgToggle(R, "XC_Trigger",   "Triggerbot", XC, "Trigger")
+        cfgSlider(R, "XC_TrigDelay", "Delay",      XC, "TriggerDelay", 0, 300, 0, "ms")
+        cfgToggle(R, "XC_TrigTeam",  "Team Check", XC, "TriggerTeamCheck")
+        cfgDropdown(S, "XC_Skin", "Gun Skin", XC, "Skin", EX.SkinList)
+    end
+
+    do
+        local L = Tabs.VIS:AddGroupbox({Side = "Left",  Name = "Lighting",  IconName = "sun"})
+        local R = Tabs.VIS:AddGroupbox({Side = "Right", Name = "Crosshair", IconName = "plus"})
+        local C = Tabs.VIS:AddGroupbox({Side = "Right", Name = "Camera",    IconName = "camera"})
+        cfgToggle(L, "XC_Fullbright", "Fullbright", XC, "Fullbright")
+        cfgToggle(R, "XC_Cross",       "Crosshair",  XC, "Crosshair", "Crosshair color", "CrosshairColor3", XC.CrosshairColor3)
+        cfgSlider(R, "XC_CrossSize",   "Size",       XC, "CrosshairSize", 2, 30, 0, "px")
+        cfgSlider(R, "XC_CrossGap",    "Gap",        XC, "CrosshairGap", 0, 20, 0, "px")
+        cfgToggle(R, "XC_CrossDot",    "Center Dot", XC, "CrosshairDot", "Dot color", "CrosshairColor3", XC.CrosshairColor3)
+        cfgToggle(C, "XC_FovOvr",   "FOV Override",  XC, "FovOverride")
+        cfgSlider(C, "XC_FovValue", "Field of View", XC, "FovValue", 30, 120, 0, "deg")
+    end
+
+    local wm = Library:AddDraggableLabel("AV∅X | -- fps")
+    task.spawn(function()
+        local acc, frames = 0, 0
+        RunService.RenderStepped:Connect(function(dt)
+            acc += dt; frames += 1
+            if acc >= 0.25 then
+                wm:SetText(string.format("AV∅X | %d fps", math.floor(frames/acc + 0.5)))
+                acc, frames = 0, 0
+            end
+        end)
+    end)
+
+    do
+        local MenuGroup = Tabs["UI Settings"]:AddGroupbox({Side = "Left", Name = "Menu", IconName = "wrench"})
+
+        MenuGroup:AddToggle("KeybindMenuOpen", {
+            Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu",
+            Callback = function(v) Library.KeybindFrame.Visible = v end,
+        })
+        MenuGroup:AddToggle("ShowCustomCursor", {
+            Text = "Custom Cursor", Default = Library.ShowCustomCursor,
+            Callback = function(v) Library.ShowCustomCursor = v end,
+        })
+        MenuGroup:AddToggle("AlwaysOnTop", {
+            Text = "Always On Top", Default = Window.AlwaysOnTop,
+            Callback = function(v) Window:SetAlwaysOnTop(v) end,
+        })
+        MenuGroup:AddToggle("WatermarkToggle", {
+            Text = "Watermark", Default = true,
+            Callback = function(v) wm:SetVisible(v) end,
+        })
+        MenuGroup:AddDropdown("NotificationSide", {
+            Values = {"Left","Right"}, Default = "Right", Text = "Notification Side",
+            Callback = function(v) Library:SetNotifySide(v) end,
+        })
+        MenuGroup:AddDropdown("DPIDropdown", {
+            Values = {"50%","75%","100%","125%","150%","175%","200%"}, Default = "100%",
+            Text = "DPI Scale",
+            Callback = function(v) Library:SetDPIScale(tonumber((v:gsub("%%","")))) end,
+        })
+        MenuGroup:AddSlider("UICornerSlider", {
+            Text = "Corner Radius", Default = Library.CornerRadius,
+            Min = 0, Max = 20, Rounding = 0,
+            Callback = function(v) Window:SetCornerRadius(v) end,
+        })
+        MenuGroup:AddDivider()
+        MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind",
+            {Default = "RightShift", NoUI = true, Text = "Menu keybind"})
+        MenuGroup:AddButton("Unload", function()
+            pcall(unloadAll)
+            Library:Unload()
+        end)
+
+        Library.ToggleKeybind = Options.MenuKeybind
+
+        ThemeManager:SetLibrary(Library)
+        SaveManager:SetLibrary(Library)
+        SaveManager:IgnoreThemeSettings()
+        SaveManager:SetIgnoreIndexes({"MenuKeybind"})
+        ThemeManager:SetFolder("avox")
+        SaveManager:SetFolder("avox/urban-reload")
+        SaveManager:BuildConfigSection(Tabs["UI Settings"])
+        ThemeManager:ApplyToTab(Tabs["UI Settings"])
+    end
+
+    genv.RW_GUI = {Destroy = function() Library:Unload() end}
+end
